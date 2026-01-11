@@ -7,6 +7,8 @@ import (
 	"io"
 	"slices"
 	"strings"
+
+	"github.com/oliverTuesta/http-tcp/internal/headers"
 )
 
 type RequestLine struct {
@@ -17,12 +19,14 @@ type RequestLine struct {
 
 type Request struct {
 	RequestLine RequestLine
+	Headers headers.Headers
 	state       parserState
 }
 
 var ERROR_BAD_START_LINE = fmt.Errorf("bad request line")
 var ERROR_UNSUPPORTED_HTTP_VERSION = fmt.Errorf("unsupported http version")
 var ERROR_UNSUPPORTED_HTTP_METHOD = fmt.Errorf("unsupported http method")
+var ERROR_UNEXPECTED_EOF = fmt.Errorf("unexpected EOF while parsing request")
 var SEPARATOR = []byte("\r\n")
 
 type parserState string
@@ -30,6 +34,7 @@ type parserState string
 const (
 	StateInit parserState = "init"
 	StateDone parserState = "done"
+	StateParsingHeaders parserState = "parsingHeaders"
 )
 
 
@@ -70,23 +75,42 @@ func parseRequestLine(b []byte) (*RequestLine, int, error) {
 
 func (r *Request) parse(data []byte) (int, error){
 	read := 0
-	outer:
 	switch r.state {
+
 		case StateInit: 
 		rl, n, err := parseRequestLine(data[read:])
 		if err != nil {
 			return 0, err
 		}
 		if n == 0 {
-			break outer
+			return 0, nil
 		}
 		r.RequestLine = *rl
 		read += n
 
+		r.state = StateParsingHeaders
+
+	case StateParsingHeaders:
+		hs := headers.NewHeaders()
+
+		for {
+			n, done, err := hs.Parse(data[read:])
+			read += n
+			if n == 0 || err != nil {
+				return 0, nil
+			}
+			if done {
+				break	
+			}
+		}
+
+		r.Headers = hs
 		r.state = StateDone
+
 	case StateDone:
-		break outer
+		return 0, nil
 	}
+
 	return read, nil
 }
 
@@ -97,6 +121,7 @@ func (r *Request) done() bool {
 func NewRequest() *Request {
 	return &Request{
 		state: StateInit,
+		Headers: headers.NewHeaders(),
 	}
 }
 
@@ -110,15 +135,21 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 	for !request.done() {
 		n, err := reader.Read(buf[bufLen:])
-		if err != nil {
+
+
+		if err != nil && err != io.EOF {
 			return nil, errors.Join(fmt.Errorf("unable to read"), err)
 		}
 
 		bufLen += n
 		readN, err := request.parse(buf[:bufLen])
 
-		if err != nil && err != io.EOF {
+		if err != nil {
 			return nil, err
+		}
+
+		if readN == 0 && n == 0 {
+			return nil, ERROR_UNEXPECTED_EOF
 		}
 
 		copy(buf, buf[readN:bufLen])
