@@ -3,20 +3,27 @@ package headers
 import (
 	"bytes"
 	"fmt"
+	"strings"
 )
 
-type Headers map[string]string 
-
+type Headers map[string]string
 
 func NewHeaders() Headers {
 	return Headers{}
 }
 
+func (h Headers) Get(key string) (string, bool) {
+	v, ok := h[strings.ToLower(key)]
+	return v, ok
+}
+
+func (h Headers) Add(key string, value string) {
+	h[strings.ToLower(key)] = value
+}
 
 var ERROR_BAD_FIELD_LINE_FORMAT = fmt.Errorf("bad field line format")
 var ERROR_BAD_FIELD_LINE_NAME = fmt.Errorf("bad field line name")
 var ERROR_BAD_FIELD_LINE_VALUE = fmt.Errorf("bad field line value")
-
 
 func isTChar(b byte) bool {
 	if b >= 'a' && b <= 'z' {
@@ -31,7 +38,7 @@ func isTChar(b byte) bool {
 	}
 
 	switch b {
-		case '!', '#', '$', '%', '&', '\'', '*',
+	case '!', '#', '$', '%', '&', '\'', '*',
 		'+', '-', '.', '^', '_', '`', '|', '~':
 		return true
 	}
@@ -39,9 +46,9 @@ func isTChar(b byte) bool {
 	return false
 }
 
-func formatFieldName(data []byte) []byte  {
+func formatFieldName(data []byte) []byte {
 	leftSpaces := 0
-	for leftSpaces < len(data) && data[leftSpaces] == ' '{
+	for leftSpaces < len(data) && data[leftSpaces] == ' ' {
 		leftSpaces++
 	}
 	data = data[leftSpaces:]
@@ -60,13 +67,13 @@ func formatFieldName(data []byte) []byte  {
 
 func formatFieldValue(data []byte) []byte {
 	i := 0
-	for i < len(data) && data[i] == ' '{
+	for i < len(data) && data[i] == ' ' {
 		i++
 	}
 	data = data[i:]
 
 	i = len(data)
-	for i >= 0 && data[i-1] == ' '{
+	for i >= 0 && data[i-1] == ' ' {
 		i--
 	}
 	data = data[:i]
@@ -112,12 +119,12 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	strName := string(fieldName)
 	strValue := string(fieldValue)
 
-	curr, exists := h[strName]
+	curr, exists := h.Get(strName)
 
 	if !exists {
-		h[strName] = strValue	
+		h.Add(strName, strValue)
 	} else {
-		h[strName] = curr + ", " + strValue	
+		h.Add(strName, curr + ", " + strValue)
 	}
 
 	return n, false, nil

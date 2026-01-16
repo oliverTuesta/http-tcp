@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/oliverTuesta/http-tcp/internal/headers"
@@ -19,24 +20,26 @@ type RequestLine struct {
 
 type Request struct {
 	RequestLine RequestLine
-	Headers headers.Headers
+	Headers     headers.Headers
 	state       parserState
+	Body        []byte
 }
 
 var ERROR_BAD_START_LINE = fmt.Errorf("bad request line")
 var ERROR_UNSUPPORTED_HTTP_VERSION = fmt.Errorf("unsupported http version")
 var ERROR_UNSUPPORTED_HTTP_METHOD = fmt.Errorf("unsupported http method")
 var ERROR_UNEXPECTED_EOF = fmt.Errorf("unexpected EOF while parsing request")
+var ERROR_BODY_LARGER_THAN_CONTENT_LENGTH = fmt.Errorf("body larger than content-length")
 var SEPARATOR = []byte("\r\n")
 
 type parserState string
 
 const (
-	StateInit parserState = "init"
-	StateDone parserState = "done"
+	StateInit           parserState = "init"
+	StateDone           parserState = "done"
 	StateParsingHeaders parserState = "parsingHeaders"
+	StateParsingBody    parserState = "parsingBody"
 )
-
 
 func parseRequestLine(b []byte) (*RequestLine, int, error) {
 	idx := bytes.Index(b, SEPARATOR)
@@ -46,7 +49,7 @@ func parseRequestLine(b []byte) (*RequestLine, int, error) {
 	}
 
 	requestLine := b[:idx]
-	read := idx+len(SEPARATOR)
+	read := idx + len(SEPARATOR)
 
 	parts := bytes.Split(requestLine, []byte(" "))
 
@@ -73,11 +76,11 @@ func parseRequestLine(b []byte) (*RequestLine, int, error) {
 
 }
 
-func (r *Request) parse(data []byte) (int, error){
+func (r *Request) parse(data []byte) (int, error) {
 	read := 0
 	switch r.state {
 
-		case StateInit: 
+	case StateInit:
 		rl, n, err := parseRequestLine(data[read:])
 		if err != nil {
 			return 0, err
@@ -91,21 +94,44 @@ func (r *Request) parse(data []byte) (int, error){
 		r.state = StateParsingHeaders
 
 	case StateParsingHeaders:
-		hs := headers.NewHeaders()
 
-		for {
-			n, done, err := hs.Parse(data[read:])
-			read += n
-			if n == 0 || err != nil {
-				return 0, nil
-			}
-			if done {
-				break	
-			}
+		n, done, err := r.Headers.Parse(data[read:])
+		read += n
+		if err != nil {
+			return 0, err
+		}
+		if n == 0 {
+			return 0, nil
 		}
 
-		r.Headers = hs
-		r.state = StateDone
+		if done {
+			r.state = StateParsingBody
+		}
+
+	case StateParsingBody:
+		bodyLenStr, hasContent := r.Headers.Get("content-length")
+		if !hasContent {
+			r.state = StateDone
+			return 0, nil
+		} else {
+			bodyLen, err := strconv.Atoi(bodyLenStr)
+			if err != nil {
+				return 0, err
+			}
+
+			bodyStart := 0
+			availableBody := len(data) - bodyStart
+
+			if availableBody < bodyLen {
+				return 0, nil
+			} else if len(data) > bodyLen {
+				return 0, ERROR_BODY_LARGER_THAN_CONTENT_LENGTH
+			}
+
+			r.Body = data
+			read = bodyLen
+			r.state = StateDone
+		}
 
 	case StateDone:
 		return 0, nil
@@ -120,11 +146,10 @@ func (r *Request) done() bool {
 
 func NewRequest() *Request {
 	return &Request{
-		state: StateInit,
+		state:   StateInit,
 		Headers: headers.NewHeaders(),
 	}
 }
-
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 
@@ -135,7 +160,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 	for !request.done() {
 		n, err := reader.Read(buf[bufLen:])
-
 
 		if err != nil && err != io.EOF {
 			return nil, errors.Join(fmt.Errorf("unable to read"), err)
@@ -148,9 +172,11 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			return nil, err
 		}
 
-		if readN == 0 && n == 0 {
+		if readN == 0 && n == 0 && !request.done() {
 			return nil, ERROR_UNEXPECTED_EOF
 		}
+
+		fmt.Println("hola")
 
 		copy(buf, buf[readN:bufLen])
 		bufLen -= readN

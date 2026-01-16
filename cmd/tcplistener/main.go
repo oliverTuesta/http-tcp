@@ -8,8 +8,6 @@ import (
 	"github.com/oliverTuesta/http-tcp/internal/request"
 )
 
-
-
 const port = ":42069"
 
 func main() {
@@ -17,13 +15,13 @@ func main() {
 
 	if err != nil {
 		log.Fatal("error", err)
-	}	
+	}
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			log.Fatal("error", err)
-		}	
+		}
 
 		fmt.Println("connection accepted")
 
@@ -32,15 +30,17 @@ func main() {
 			log.Fatal("error", err)
 		}
 
-		fmt.Println("Request line:")	
-		fmt.Printf("- Method: %s\n", request.RequestLine.Method)	
-		fmt.Printf("- Target: %s\n", request.RequestLine.RequestTarget)	
-		fmt.Printf("- Version: %s\n", request.RequestLine.HttpVersion)	
-		fmt.Println("Headers:")	
+		fmt.Println("Request line:")
+		fmt.Printf("- Method: %s\n", request.RequestLine.Method)
+		fmt.Printf("- Target: %s\n", request.RequestLine.RequestTarget)
+		fmt.Printf("- Version: %s\n", request.RequestLine.HttpVersion)
+		fmt.Println("Headers:")
 		for k, v := range request.Headers {
 			fmt.Printf("- %s: %s\n", k, v)
 		}
+
+		fmt.Println("Body:")
+		fmt.Println(string(request.Body))
 	}
 
 }
-

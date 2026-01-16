@@ -26,7 +26,6 @@ func main() {
 		log.Fatal("error", err)
 	}
 
-
 	conn, err := net.DialUDP("udp", nil, dial)
 
 	if err != nil {
@@ -43,5 +42,3 @@ func main() {
 		conn.Write([]byte(input))
 	}
 }
-
-
