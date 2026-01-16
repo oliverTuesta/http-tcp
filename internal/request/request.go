@@ -78,66 +78,64 @@ func parseRequestLine(b []byte) (*RequestLine, int, error) {
 
 func (r *Request) parse(data []byte) (int, error) {
 	read := 0
-	switch r.state {
 
-	case StateInit:
-		rl, n, err := parseRequestLine(data[read:])
-		if err != nil {
-			return 0, err
-		}
-		if n == 0 {
-			return 0, nil
-		}
-		r.RequestLine = *rl
-		read += n
-
-		r.state = StateParsingHeaders
-
-	case StateParsingHeaders:
-
-		n, done, err := r.Headers.Parse(data[read:])
-		read += n
-		if err != nil {
-			return 0, err
-		}
-		if n == 0 {
-			return 0, nil
-		}
-
-		if done {
-			r.state = StateParsingBody
-		}
-
-	case StateParsingBody:
-		bodyLenStr, hasContent := r.Headers.Get("content-length")
-		if !hasContent {
-			r.state = StateDone
-			return 0, nil
-		} else {
-			bodyLen, err := strconv.Atoi(bodyLenStr)
+	for {
+		switch r.state {
+		case StateInit:
+			rl, n, err := parseRequestLine(data[read:])
 			if err != nil {
 				return 0, err
 			}
+			if n == 0 {
+				return read, nil
+			}
+			r.RequestLine = *rl
+			read += n
+			r.state = StateParsingHeaders
 
-			bodyStart := 0
-			availableBody := len(data) - bodyStart
-
-			if availableBody < bodyLen {
-				return 0, nil
-			} else if len(data) > bodyLen {
-				return 0, ERROR_BODY_LARGER_THAN_CONTENT_LENGTH
+		case StateParsingHeaders:
+			n, done, err := r.Headers.Parse(data[read:])
+			read += n
+			if err != nil {
+				return 0, err
+			}
+			if n == 0 {
+				return read, nil
 			}
 
-			r.Body = data
-			read = bodyLen
-			r.state = StateDone
+			if done {
+				r.state = StateParsingBody
+			}
+
+		case StateParsingBody:
+			bodyLenStr, hasContent := r.Headers.Get("content-length")
+			if !hasContent {
+				r.state = StateDone
+				return read, nil
+			} else {
+				bodyLen, err := strconv.Atoi(bodyLenStr)
+				if err != nil {
+					return 0, err
+				}
+
+				availableBody := len(data[read:])
+
+				if availableBody < bodyLen {
+					return read, nil
+				} else if availableBody > bodyLen {
+					return 0, ERROR_BODY_LARGER_THAN_CONTENT_LENGTH
+				}
+
+				r.Body = data[read : read+bodyLen]
+				read += bodyLen
+				r.state = StateDone
+				return read, nil
+			}
+
+		case StateDone:
+			return read, nil
 		}
-
-	case StateDone:
-		return 0, nil
 	}
-
-	return read, nil
 }
 
 func (r *Request) done() bool {
@@ -160,7 +158,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 	for !request.done() {
 		n, err := reader.Read(buf[bufLen:])
-
 		if err != nil && err != io.EOF {
 			return nil, errors.Join(fmt.Errorf("unable to read"), err)
 		}
@@ -175,8 +172,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		if readN == 0 && n == 0 && !request.done() {
 			return nil, ERROR_UNEXPECTED_EOF
 		}
-
-		fmt.Println("hola")
 
 		copy(buf, buf[readN:bufLen])
 		bufLen -= readN
