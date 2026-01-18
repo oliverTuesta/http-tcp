@@ -1,7 +1,7 @@
 package server
 
 import (
-	"fmt"
+	"bytes"
 	"io"
 	"log"
 	"net"
@@ -20,7 +20,7 @@ type Server struct {
 
 type HandlerError struct {
 	StatusCode response.StatusCode
-	Message    string
+	Message    []byte
 }
 
 type Handler func(w io.Writer, req *request.Request) *HandlerError
@@ -66,36 +66,28 @@ func (s *Server) handle(conn net.Conn) {
 
 	defer conn.Close()
 
-	fmt.Println("Request line 0:")
 	req, err := request.RequestFromReader(conn)
-	fmt.Println("Request line 2:")
 	if err != nil {
 		log.Println("error:", err)
 		return
 	}
 
-	// logs
-	fmt.Println("Request line:")
-	fmt.Printf("- Method: %s\n", req.RequestLine.Method)
-	fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
-	fmt.Printf("- Version: %s\n", req.RequestLine.HttpVersion)
-	fmt.Println("Headers:")
-	for k, v := range req.Headers {
-		fmt.Printf("- %s: %s\n", k, v)
-	}
+	var body bytes.Buffer
 
-	fmt.Println("Body:")
-	fmt.Println(string(req.Body))
-	//
-
-	handlerError := s.handler(conn, req)
+	handlerError := s.handler(&body, req)
 	if handlerError != nil {
 		WriteHandlerError(conn, handlerError)
 	} else {
+		headers := response.GetDefaultHeaders(body.Len())
+
 		response.WriteStatusLine(conn, response.StatusOk)
-		headers := response.GetDefaultHeaders(0)
+
 		err := response.WriteHeaders(conn, headers)
 		if err != nil {
+			log.Println("write error:", err)
+		}
+
+		if _, err := io.Copy(conn, &body); err != nil {
 			log.Println("write error:", err)
 		}
 	}
@@ -104,9 +96,14 @@ func (s *Server) handle(conn net.Conn) {
 
 func WriteHandlerError(w io.Writer, handlerError *HandlerError) {
 	response.WriteStatusLine(w, handlerError.StatusCode)
-	headers := response.GetDefaultHeaders(0)
+	headers := response.GetDefaultHeaders(len(handlerError.Message))
 	err := response.WriteHeaders(w, headers)
 	if err != nil {
 		log.Println("write error:", err)
 	}
+	err = response.WriteBody(w, handlerError.Message)
+	if err != nil {
+		log.Println("write error:", err)
+	}
+
 }

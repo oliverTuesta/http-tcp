@@ -21,13 +21,16 @@ func main() {
 		case "/yourproblem":
 			return &server.HandlerError{
 				StatusCode: response.StatusBadRequest,
+				Message: []byte("Your problem is not my problem\n"),
 			}
 		case "/myproblem":
 			return &server.HandlerError{
 				StatusCode: response.StatusInternalServerError,
+				Message: []byte("Woopsie, my bad\n"),
 			}
 		default:
-			return nil  // Success - no error
+			w.Write([]byte("All good, frfr\n"))
+			return nil
 		}
 	})
 
