@@ -17,11 +17,34 @@ const (
 	StatusInternalServerError StatusCode = "500 Internal Server Error"
 )
 
-var ERROR_INVALID_STATUS_CODE = fmt.Errorf("invalid status code")
+type writerState int
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+const (
+	stateInit writerState = iota
+	stateStatusWritten
+	stateHeadersWritten
+	stateBodyWritten
+)
+
+type Writer struct {
+	writer io.Writer
+	state  writerState
+}
+
+func NewWriter(w io.Writer) *Writer {
+	return &Writer{writer: w, state: stateInit}
+}
+
+var ERROR_INVALID_STATUS_CODE = fmt.Errorf("invalid status code")
+var ERROR_INVALID_WRITE_ORDER = fmt.Errorf("invalid writer order")
+
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+	if w.state != stateInit {
+		return ERROR_INVALID_WRITE_ORDER
+	}
+
 	switch statusCode {
-		case StatusOk,
+	case StatusOk,
 		StatusBadRequest,
 		StatusNotFound,
 		StatusInternalServerError:
@@ -29,31 +52,45 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 		return ERROR_INVALID_STATUS_CODE
 	}
 
-	_, err := w.Write([]byte("HTTP/1.1 " + string(statusCode) + "\r\n"))
+	_, err := w.writer.Write([]byte("HTTP/1.1 " + string(statusCode) + "\r\n"))
+	w.state = stateStatusWritten
 	return err
 }
 
 func GetDefaultHeaders(contentLen int) headers.Headers {
 	var headers = headers.NewHeaders()
-	headers.Add("content-length", strconv.Itoa(contentLen))
-	headers.Add("connection", "close")
-	headers.Add("content-type", "text/plain")
+	headers.Set("content-length", strconv.Itoa(contentLen))
+	headers.Set("connection", "close")
+	headers.Set("content-type", "text/html")
 	return headers
 }
 
-func WriteHeaders(w io.Writer, headers headers.Headers) error {
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
+	if w.state != stateStatusWritten {
+		return ERROR_INVALID_WRITE_ORDER
+	}
 	for key, value := range headers {
-		_, err := w.Write([]byte(key + ": " + value + "\r\n"))	
+		_, err := w.writer.Write([]byte(key + ": " + value + "\r\n"))
 		if err != nil {
 			return err
 		}
 	}
-	_, err := w.Write([]byte("\r\n"))	
+	_, err := w.writer.Write([]byte("\r\n"))
+	w.state = stateHeadersWritten
 	return err
 }
 
-func WriteBody(w io.Writer, body []byte) error {
-	_, err := w.Write(body)	
-	return err
-}
+func (w *Writer) WriteBody(p []byte) (int, error) {
+	if w.state != stateHeadersWritten {
+		return 0, ERROR_INVALID_WRITE_ORDER
+	}
 
+	n, err := w.writer.Write(p)
+	if err != nil {
+		return n, err
+	}
+
+	w.state = stateBodyWritten
+	w.state = stateBodyWritten
+	return n, nil
+}

@@ -14,22 +14,35 @@ import (
 
 const port = 42069
 
-func main() {
+func createBody(status response.StatusCode, title string, description string) []byte {
+	return []byte(
+		`<html>
+		<head>
+		<title>` + string(status) + `</title>
+		</head>
+		<body>
+		<h1>` + title + `</h1>
+		<p>` + description + `</p>
+		</body>
+		</html>`,
+	)
+}
 
+func main() {
 	handler := server.Handler(func(w io.Writer, req *request.Request) *server.HandlerError {
 		switch req.RequestLine.RequestTarget {
 		case "/yourproblem":
 			return &server.HandlerError{
 				StatusCode: response.StatusBadRequest,
-				Message: []byte("Your problem is not my problem\n"),
+				Message:    createBody(response.StatusBadRequest, "Bad Request", "Your request honestly kinda sucked"),
 			}
 		case "/myproblem":
 			return &server.HandlerError{
 				StatusCode: response.StatusInternalServerError,
-				Message: []byte("Woopsie, my bad\n"),
+				Message:    createBody(response.StatusInternalServerError, "Internal Server Error", "Okay, you know what? This one is on me."),
 			}
 		default:
-			w.Write([]byte("All good, frfr\n"))
+			w.Write(createBody(response.StatusOk, "Success!", "Your request was an absolute banger."))
 			return nil
 		}
 	})

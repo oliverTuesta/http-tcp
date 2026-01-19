@@ -18,6 +18,15 @@ func (h Headers) Get(key string) (string, bool) {
 }
 
 func (h Headers) Add(key string, value string) {
+	curr, exists := h.Get(key)
+	if !exists {
+		h.Set(key, value)
+	} else {
+		h.Set(key, curr+", "+value)
+	}
+}
+
+func (h Headers) Set(key string, value string) {
 	h[strings.ToLower(key)] = value
 }
 
@@ -119,13 +128,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	strName := string(fieldName)
 	strValue := string(fieldValue)
 
-	curr, exists := h.Get(strName)
-
-	if !exists {
-		h.Add(strName, strValue)
-	} else {
-		h.Add(strName, curr + ", " + strValue)
-	}
+	h.Add(strName, strValue)
 
 	return n, false, nil
 }

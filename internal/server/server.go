@@ -80,9 +80,10 @@ func (s *Server) handle(conn net.Conn) {
 	} else {
 		headers := response.GetDefaultHeaders(body.Len())
 
-		response.WriteStatusLine(conn, response.StatusOk)
+		writer := response.NewWriter(conn)
+		writer.WriteStatusLine(response.StatusOk)
 
-		err := response.WriteHeaders(conn, headers)
+		err := writer.WriteHeaders(headers)
 		if err != nil {
 			log.Println("write error:", err)
 		}
@@ -95,13 +96,14 @@ func (s *Server) handle(conn net.Conn) {
 }
 
 func WriteHandlerError(w io.Writer, handlerError *HandlerError) {
-	response.WriteStatusLine(w, handlerError.StatusCode)
+	writer := response.NewWriter(w)
+	writer.WriteStatusLine(handlerError.StatusCode)
 	headers := response.GetDefaultHeaders(len(handlerError.Message))
-	err := response.WriteHeaders(w, headers)
+	err := writer.WriteHeaders(headers)
 	if err != nil {
 		log.Println("write error:", err)
 	}
-	err = response.WriteBody(w, handlerError.Message)
+	_, err = writer.WriteBody(handlerError.Message)
 	if err != nil {
 		log.Println("write error:", err)
 	}
