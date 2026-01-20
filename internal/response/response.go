@@ -24,6 +24,7 @@ const (
 	stateStatusWritten
 	stateHeadersWritten
 	stateBodyWritten
+	stateChunkedBodyDone
 )
 
 type Writer struct {
@@ -69,7 +70,7 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 	if w.state != stateStatusWritten {
 		return ERROR_INVALID_WRITE_ORDER
 	}
-	for key, value := range headers {
+	for key, value := range (headers) {
 		_, err := w.writer.Write([]byte(key + ": " + value + "\r\n"))
 		if err != nil {
 			return err
@@ -91,6 +92,46 @@ func (w *Writer) WriteBody(p []byte) (int, error) {
 	}
 
 	w.state = stateBodyWritten
+	return n, nil
+}
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.state != stateHeadersWritten && w.state != stateBodyWritten {
+		return 0, ERROR_INVALID_WRITE_ORDER
+	}
+
+	n, err := w.writer.Write([]byte(fmt.Sprintf("%x\r\n", len(p))))
+	if err != nil {
+		return n, err
+	}
+
+	n, err = w.writer.Write(p)
+	if err != nil {
+		return n, err
+	}
+
+	n, err = w.writer.Write([]byte("\r\n"))
+
 	w.state = stateBodyWritten
 	return n, nil
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	w.state = stateChunkedBodyDone
+	return w.writer.Write([]byte("0\r\n\r\n"))
+}
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	if w.state != stateChunkedBodyDone {
+		return ERROR_INVALID_WRITE_ORDER
+	}
+
+	for key, value := range h {
+		_, err := w.writer.Write([]byte(key + ": " + value + "\r\n"))
+		if err != nil {
+			return err
+		}
+	}
+	_, err := w.writer.Write([]byte("\r\n"))
+	return err
 }

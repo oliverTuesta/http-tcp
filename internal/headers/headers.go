@@ -26,6 +26,11 @@ func (h Headers) Add(key string, value string) {
 	}
 }
 
+func (h Headers) Delete(key string) {
+	key = strings.ToLower(key)
+	delete(h, key)
+}
+
 func (h Headers) Set(key string, value string) {
 	h[strings.ToLower(key)] = value
 }

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"io"
 	"log"
 	"net"
@@ -23,7 +22,7 @@ type HandlerError struct {
 	Message    []byte
 }
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w *response.Writer, req *request.Request) *HandlerError
 
 func Serve(port int, handler Handler) (*Server, error) {
 	url := ":" + strconv.Itoa(port)
@@ -72,27 +71,12 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 
-	var body bytes.Buffer
+	writer := response.NewWriter(conn)
 
-	handlerError := s.handler(&body, req)
+	handlerError := s.handler(writer, req)
 	if handlerError != nil {
 		WriteHandlerError(conn, handlerError)
-	} else {
-		headers := response.GetDefaultHeaders(body.Len())
-
-		writer := response.NewWriter(conn)
-		writer.WriteStatusLine(response.StatusOk)
-
-		err := writer.WriteHeaders(headers)
-		if err != nil {
-			log.Println("write error:", err)
-		}
-
-		if _, err := io.Copy(conn, &body); err != nil {
-			log.Println("write error:", err)
-		}
 	}
-
 }
 
 func WriteHandlerError(w io.Writer, handlerError *HandlerError) {
